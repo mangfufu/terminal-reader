@@ -1,0 +1,40 @@
+name: Linux desktop build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2t64
+      - name: Use stable Rust
+        run: rustup update stable --no-self-update && rustup default stable
+      - name: Configure private-path-free build
+        run: echo "RUSTFLAGS=--remap-path-prefix=$GITHUB_WORKSPACE=/source --remap-path-prefix=$HOME=/build-user" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm test
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: npm run desktop:linux
+      - name: Collect release assets
+        run: |
+          node scripts/collect-linux-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terminal-reader-linux
+          if-no-files-found: error
+          path: artifacts/release/linux/

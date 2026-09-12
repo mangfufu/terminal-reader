@@ -1,0 +1,44 @@
+name: Windows desktop build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Use stable Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+      - name: Configure private-path-free build
+        run: |
+          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+          $resourceCompiler = Get-ChildItem "$sdkRoot/*/x64/rc.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $resourceCompiler) { throw 'Windows SDK resource compiler not found' }
+          "RC=$($resourceCompiler.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RUSTFLAGS=--remap-path-prefix=$env:GITHUB_WORKSPACE=/source --remap-path-prefix=$env:USERPROFILE=/build-user -C link-arg=/PDBALTPATH:terminal-reader.pdb" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - run: npm ci
+      - run: npm test
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - run: npm run desktop:package
+      - run: ./scripts/collect-windows-release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terminal-reader-windows
+          if-no-files-found: error
+          path: artifacts/release/windows/

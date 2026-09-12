@@ -1,0 +1,43 @@
+{
+  "name": "terminal-reader",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:ui": "node scripts/verify-ui.mjs",
+    "test:library": "node scripts/verify-library.mjs",
+    "test:keyboard": "node scripts/verify-keyboard.mjs",
+    "test:categories": "node scripts/verify-library-categories.mjs",
+    "test:category-storage": "node scripts/verify-category-storage.mjs",
+    "test:simulation": "node scripts/verify-simulation.mjs",
+    "test:reader": "node scripts/verify-reader.mjs",
+    "test:navigation": "node scripts/verify-navigation.mjs",
+    "test:search-cancel": "node scripts/verify-search-cancel.mjs",
+    "test:storage": "node scripts/verify-library-management.mjs",
+    "test:backup": "node scripts/verify-backup-ui.mjs",
+    "test:native": "node scripts/verify-native.mjs",
+    "test:native-library": "node scripts/verify-native-library.mjs",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build --no-bundle",
+    "desktop:package": "tauri build --bundles nsis",
+    "desktop:linux": "tauri build --bundles deb,appimage",
+    "test:terminal": "node scripts/verify-terminal-features.mjs",
+    "test:workspaces": "node scripts/verify-workspaces.mjs",
+    "test:native-workspaces": "node scripts/verify-native-workspaces.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.11.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "^24.0.0",
+    "playwright-core": "^1.58.0",
+    "typescript": "~5.9.3",
+    "vite": "8.2.2",
+    "vitest": "5.0.0"
+  }
+}

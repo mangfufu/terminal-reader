@@ -1,0 +1,28 @@
+#panel-body.library-panel-body { display: flex; flex-direction: column; gap: 6px; overflow: hidden; padding: 8px; }
+.library-controls { flex: 0 0 auto; max-height: 70%; min-height: 32px; overflow: auto; scrollbar-width: thin; }
+.library-panel-body .library-controls-row { align-items: center; gap: 6px; margin-bottom: 6px; }
+.library-panel-body .library-controls-row button { padding: 4px 8px; }
+.library-controls-row input, .library-controls-row select {
+  min-width: 0; max-width: 100%; border: 1px solid var(--border); border-radius: 0;
+  background: var(--bg); color: var(--text); font: inherit; padding: 4px 6px;
+}
+.library-category-filter { flex: 1; }
+.library-controls-row select[aria-label="归入分类"] { flex: 1; }
+.library-controls > .panel-input { margin-bottom: 6px; padding: 5px 6px; }
+.library-controls .library-hint { margin: 2px 0 4px; }
+.library-results { flex: 1 1 auto; min-height: 32px; overflow: auto; scrollbar-width: thin; }
+.library-selection-count { flex: 1 0 100%; color: var(--accent); }
+.library-controls button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.library-category-management { overflow: auto; min-height: 0; }
+.library-category-management form input { flex: 1; }
+.library-category-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.library-category-name { flex: 1; min-width: 50px; overflow-wrap: anywhere; }
+.library-category-row input { flex: 1; }
+.library-error { flex: 0 0 auto; margin: 0; color: var(--ansi-warning); max-height: 42px; overflow: auto; }
+@media (max-height: 260px) {
+  #panel-body.library-panel-body { gap: 3px; padding: 4px 6px; }
+  .library-controls { flex-shrink: 1; max-height: 55%; min-height: 16px; }
+  .library-results { min-height: 37px; }
+  .library-error { max-height: 22px; }
+  .library-controls .library-hint { display: none; }
+}

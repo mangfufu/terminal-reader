@@ -1,0 +1,26 @@
+.library-book-text { min-width: 0; }
+.book-category {
+  display: inline;
+  margin-left: 1ch;
+  color: var(--muted);
+  font-size: inherit;
+}
+.book-category::before { content: '#'; }
+.book-list[aria-multiselectable='true'] .book-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 1ch;
+  padding-left: 20px;
+}
+.book-list[aria-multiselectable='true'] .book-item::before { content: none; }
+.book-list[aria-multiselectable='true'] .book-item[data-focused='true']::before {
+  content: '›'; position: absolute; left: 6px; color: var(--accent);
+}
+.book-checkbox {
+  flex: 0 0 3ch;
+  white-space: pre;
+  color: var(--muted);
+}
+.book-list[aria-multiselectable='true'] .book-item[aria-selected='true'] .book-checkbox {
+  color: var(--text);
+}
