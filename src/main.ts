@@ -11,6 +11,8 @@ import { Credentials } from './credentials';
 import { deriveKey, encryptedData, seal, unseal } from './encryption';
 import { parseCommand, commandAliases, quickStart } from './terminal-command';
 import { ReadingProgress } from './progress';
+import { ReleaseUpdates } from './updates';
+import { version } from '../package.json';
 import { createBookList } from './library';
 import { LibraryPanel } from './library-panel';
 import { appendKeyboardGuide, cycleFocus, cycleRegions, isEditing, keyboardRows } from './keyboard';
@@ -42,13 +44,14 @@ app.innerHTML = `
   <main id="reader" tabindex="0" aria-label="阅读正文">
     <div id="welcome">
       <div id="shell-banner">Windows PowerShell</div>
-      <div class="reader-banner">Terminal Reader [Version 0.6.0]</div>
+      <div class="reader-banner">Terminal Reader [Version ${version}]</div>
       <p class="muted">输入 help 快速上手 · open 导入 · ls 查看 · resume 继续</p><p class="welcome-actions"><button id="open-book" aria-label="打开文件">/open</button> 打开文件，<button id="demo-book" aria-label="读一段示例">/demo</button> 试读。</p>
     </div>
     <div id="session-command" class="session-command" hidden><span id="session-prompt"></span> <span class="shell-command">/open</span> <span id="session-file" class="shell-argument"></span></div>
     <article id="content" hidden></article>
   </main>
   <div id="notice" role="status" hidden></div>
+  <div id="update-notice" hidden><span role="status"></span> <button id="update-download" type="button">[update]</button> <button id="update-dismiss" type="button">[稍后]</button></div>
   <footer class="command-line">
     <label for="command-input" id="prompt" title="输入 / 查看命令">PS C:\\Books&gt;</label>
     <div class="input-wrap"><input id="command-input" aria-label="命令" placeholder=" " autocomplete="off" spellcheck="false" role="combobox" aria-controls="suggestions" aria-expanded="false" /><span class="idle-cursor" aria-hidden="true"></span></div>
@@ -107,6 +110,7 @@ const commands = [
   ['ls', '列出书籍'], ['dir', '列出书籍'], ['cd', '切换分类'], ['cat', '打开书名或编号'], ['type', '打开书名或编号'], ['pwd', '当前分类'],
   ['read', '打开书名或编号'], ['recent', '最近阅读'], ['resume', '继续上次阅读'], ['progress', '章节进度与剩余页数'], ['goto', '按百分比跳转'], ['history', '命令历史'], ['clear', '清屏'], ['guide', '快速上手'], ['boss', '老板键 / 随机程序输出'], ['find', '搜索正文'], ['chapter', '章节目录'], ['mark', '添加与管理书签'], ['back', '返回跳转前的位置'],
   ['refresh', '刷新当前书籍源文件'], ['backup', '导出完整备份'], ['restore', '恢复备份'],
+  ['update', '在线升级 / GitHub Release 下载'],
   ['close', '关闭当前书籍 / 返回主页'], ['next', '下一份文件'], ['prev', '上一份文件'], ['scroll', '开始 / 暂停自动滚动'],
   ['speed', '调节滚动速度'], ['style', '外观与字体'], ['mode', '纯阅读 / 模拟命令行'], ['help', '命令与快捷键'], ['demo', '阅读示例'],
 ] as const;
@@ -242,7 +246,8 @@ function savePreferences() {
     if (current) recentReads[current.id] = { at: Date.now(), percent: reader.scrollTop >= reader.scrollHeight - reader.clientHeight - 1 ? 100 : progressModel.at(position).percent };
     preferenceStore().setItem('reader-recent', JSON.stringify(recentReads));
     if (privateActive && vault.unlocked) void vault.flush().catch(error => notify(`保存失败：${String(error)}`));
-  } catch { notify('本地存储空间不足，阅读位置暂时无法保存。'); }
+    return true;
+  } catch { notify('本地存储空间不足，阅读位置暂时无法保存。'); return false; }
 }
 
 function normalizeRecent(value: unknown): Record<string, { at: number; percent: number }> {
@@ -1179,6 +1184,7 @@ async function executeCommand(name: string, argument = '') {
     case 'mark': showBookmarks(argument); break;
     case 'back': goBack(); break;
     case 'refresh': await refreshBooks(); break;
+    case 'update': await showUpdates(); break;
     case 'backup': await exportBackup(argument === '--encrypt'); break;
     case 'restore': await restoreBackup(); break;
     case 'next': navigateBook(1); break;
@@ -1394,11 +1400,101 @@ for (const name of ['minimize', 'maximize', 'close', 'tab-close']) {
 }
 let unlistenProgress: UnlistenFn | undefined;
 let unlistenOpen: UnlistenFn | undefined;
+const updates = new ReleaseUpdates(() => invoke('check_release_update'));
+let updateVersion = '';
+let updatePhase: 'idle' | 'downloading' | 'ready' | 'installing' = 'idle';
+let updateStatus = '';
+let updatePanelSession = 0;
+function updateMessage(message: string) {
+  updateStatus = message;
+  if (!panel.hidden && $('panel-title').textContent === '软件更新') {
+    const status = panelBody.querySelector('[role="status"]');
+    if (status) status.textContent = message;
+  }
+}
+async function showUpdates() {
+  if (!isTauri()) { notify('在线升级在桌面程序中可用。'); return; }
+  const session = ++updatePanelSession;
+  showPanel('软件更新');
+  const heading = document.createElement('p');
+  heading.textContent = `Terminal Reader ${version}${updateVersion ? ` → ${updateVersion}` : ''}`;
+  const status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = updateStatus;
+  const hint = document.createElement('p'); hint.className = 'muted';
+  hint.textContent = '下载后校验签名，再确认安装并重启。Tab 选择，Enter 确认，Esc 返回。';
+  const actions = document.createElement('div'); actions.className = 'panel-actions';
+  const automatic = button(updatePhase === 'ready' ? '安装并重启' : updatePhase === 'downloading' ? '正在下载…' : '下载更新', () => {
+    if (updatePhase === 'ready') void installUpdate(); else void downloadUpdate();
+  });
+  automatic.disabled = true;
+  actions.append(automatic, button('手动下载', () => void openUpdateDownload()), button('稍后', () => { closePanel(); reader.focus(); }));
+  panelBody.append(heading, hint, status, actions); focusPanel();
+  const supported = await invoke<boolean>('supports_auto_update').catch(() => false);
+  if (session !== updatePanelSession || panel.hidden || $('panel-title').textContent !== '软件更新') return;
+  automatic.disabled = !supported || updatePhase === 'downloading' || updatePhase === 'installing';
+  if (!supported) hint.textContent = '此发行格式请手动下载；Linux 自动升级需运行 AppImage。Tab 选择，Enter 确认，Esc 返回。';
+}
+async function downloadUpdate() {
+  if (updatePhase === 'downloading' || updatePhase === 'installing') return;
+  updatePhase = 'downloading'; updateMessage('正在连接 GitHub Release…'); void showUpdates();
+  let unlisten: UnlistenFn | undefined;
+  try {
+    unlisten = await listen<{ downloaded: number; total: number | null }>('reader-update-progress', ({ payload }) => {
+      updateMessage(payload.total ? `正在下载 ${Math.min(100, Math.floor(payload.downloaded / payload.total * 100))}%` : `正在下载 ${(payload.downloaded / 1048576).toFixed(1)} MB`);
+    });
+    updateVersion = await invoke<string>('download_release_update');
+    updatePhase = 'ready'; updateMessage(`新版 ${updateVersion} 已下载并通过签名校验。确认后安装并重启。`);
+  } catch (error) { updatePhase = 'idle'; updateMessage(String(error)); }
+  finally {
+    unlisten?.();
+    if (!panel.hidden && $('panel-title').textContent === '软件更新') void showUpdates();
+    else {
+      $('update-notice').querySelector('span')!.textContent = updatePhase === 'ready' ? '# 更新已就绪' : '# 更新未完成';
+      $('update-notice').hidden = false;
+    }
+  }
+}
+async function installUpdate() {
+  if (updatePhase !== 'ready') return;
+  if (importing || restoring || credentials.active) { updateMessage('请先完成当前导入或备份操作。'); return; }
+  updatePhase = 'installing'; updateMessage('正在保存阅读位置并安装…'); void showUpdates();
+  let installing = false;
+  try {
+    setAutomatic(false); rememberPosition(); clearTimeout(saveTimer);
+    if (!savePreferences()) throw new Error('阅读位置尚未保存，请释放存储空间后再安装。');
+    if (privateActive) { await vault.flush(); await lockVault(); }
+    installing = true;
+    await invoke('install_release_update');
+  } catch (error) {
+    updatePhase = installing ? 'idle' : 'ready'; updateMessage(String(error));
+    if (!boss.active) void showUpdates();
+  }
+}
+function dismissUpdate() {
+  const focused = $('update-notice').contains(document.activeElement);
+  $('update-notice').hidden = true;
+  if (focused) reader.focus({ preventScroll: true });
+}
+async function openUpdateDownload() {
+  if (!isTauri()) { notify('更新下载在桌面程序中可用。'); return; }
+  try { await invoke('open_release_download'); dismissUpdate(); }
+  catch (error) { notify(String(error), 10000); }
+}
+$('update-download').onclick = () => void showUpdates();
+$('update-dismiss').onclick = dismissUpdate;
+async function checkStartupUpdate() {
+  const update = await updates.once();
+  if (!update) return;
+  updateVersion = update.version;
+  $('update-notice').querySelector('span')!.textContent = `# 新版 ${update.version}`;
+  $('update-download').setAttribute('aria-label', `升级到 ${update.version}`);
+  $('update-notice').hidden = false;
+}
 window.addEventListener('beforeunload', () => { rememberPosition(); savePreferences(); simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
 if (import.meta.hot) import.meta.hot.dispose(() => { simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
 
 async function init() {
   applyStyle();
+  if (isTauri()) void checkStartupUpdate();
   if (isTauri()) {
     try {
       await listen<boolean>('reader-boss-key', event => {

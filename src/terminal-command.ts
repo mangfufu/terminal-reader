@@ -22,4 +22,5 @@ export const quickStart: [string, string][] = [
   ['Ctrl+C / Alt+Q', '没有选择文字时回主页 / 全局老板键'],
   ['backup --encrypt / restore', '设置密码导出加密备份 / 校验后恢复到当前书库'],
   ['help / F1', '重新查看本说明 / 快捷键速查'],
+  ['update', '在线升级或手动下载；启动时自动检查 GitHub Release'],
 ];

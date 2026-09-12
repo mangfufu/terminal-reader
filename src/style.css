@@ -122,6 +122,9 @@ button svg { pointer-events: none; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #notice { flex: 0 0 auto; padding: 0 8px 4px; color: var(--muted); font-size: 12px; line-height: 1.4; max-height: 38px; overflow: hidden; overflow-wrap: anywhere; }
 #notice::before { content: '# '; }
+#update-notice { flex: 0 0 auto; padding: 0 8px 4px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+#update-notice button { padding: 0; font: inherit; color: inherit; background: transparent; }
+#update-notice button:hover { text-decoration: underline; }
 [data-theme='cmd'] #notice::before { content: ''; }
 
 #suggestions { position: absolute; z-index: 4; bottom: var(--command-height); left: 8px; right: 8px; background: var(--surface); border: 1px solid var(--border); padding: 3px; max-height: min(280px, calc(100% - var(--title-height) - var(--command-height))); overflow: auto; scrollbar-width: thin; }

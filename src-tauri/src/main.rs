@@ -14,6 +14,7 @@ use std::sync::Mutex;
 
 mod epub;
 mod filesystem;
+mod updates;
 
 const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 128 * 1024 * 1024;
@@ -377,6 +378,9 @@ async fn register_boss_key(app: tauri::AppHandle, state: tauri::State<'_, BossSh
 fn main() {
     tauri::Builder::default()
         .manage(BossShortcut::default())
+        .manage(updates::UpdateState::default())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
             if event.state == ShortcutState::Pressed {
                 let _ = app.emit("reader-boss-key", !reader_is_foreground(app));
@@ -395,6 +399,11 @@ fn main() {
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
+            updates::check_release_update,
+            updates::open_release_download,
+            updates::supports_auto_update,
+            updates::download_release_update,
+            updates::install_release_update,
             reader_has_focus,
             register_boss_key,
             import_paths,

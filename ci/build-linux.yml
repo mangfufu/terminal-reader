@@ -21,7 +21,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2t64
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf libfuse2t64 xdg-utils
       - name: Use stable Rust
         run: rustup update stable --no-self-update && rustup default stable
       - name: Configure private-path-free build
@@ -29,7 +29,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - run: npm run desktop:linux
+      - run: node node_modules/@tauri-apps/cli/tauri.js build --bundles deb,appimage --config ci/unsigned.json
       - name: Collect release assets
         run: |
           node scripts/collect-linux-release.mjs

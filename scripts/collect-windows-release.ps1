@@ -9,6 +9,7 @@ $installer = Join-Path $projectRoot "src-tauri\target\release\bundle\nsis\Termin
 if (-not (Test-Path -LiteralPath $binary) -or -not (Test-Path -LiteralPath $installer)) { throw 'Build Windows executable and installer first.' }
 Copy-Item -LiteralPath $binary -Destination (Join-Path $destination "TerminalReader-${version}-win-x64.exe") -Force
 Copy-Item -LiteralPath $installer -Destination (Join-Path $destination "TerminalReader-${version}-win-x64-setup.exe") -Force
+if (Test-Path -LiteralPath "$installer.sig") { Copy-Item -LiteralPath "$installer.sig" -Destination (Join-Path $destination "TerminalReader-${version}-win-x64-setup.exe.sig") -Force }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'PRIVATE-LIBRARY.md') -Destination (Join-Path $destination 'PRIVATE-LIBRARY.md') -Force
 Copy-Item -LiteralPath (Join-Path $projectRoot 'KEYBOARD.md') -Destination (Join-Path $destination 'KEYBOARD.md') -Force
 $notes = @"

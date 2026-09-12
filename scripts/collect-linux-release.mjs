@@ -1,4 +1,4 @@
-import { mkdir, readFile, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, copyFile, writeFile, access } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const {version} = JSON.parse(await readFile('package.json','utf8'));
 const output = 'artifacts/release/linux';
@@ -11,6 +11,7 @@ const files = [
 const hashes = [];
 for (const [source,name] of files) {
   await copyFile(source,`${output}/${name}`);
+  if (name.endsWith('.AppImage') && await access(`${source}.sig`).then(() => true, () => false)) await copyFile(`${source}.sig`, `${output}/${name}.sig`);
   hashes.push(`${createHash('sha256').update(await readFile(source)).digest('hex')}  ${name}`);
 }
 for (const name of ['KEYBOARD.md','PRIVATE-LIBRARY.md',`RELEASE-${version}.md`]) await copyFile(name,`${output}/${name}`);
