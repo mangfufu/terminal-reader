@@ -19,7 +19,7 @@ Run TerminalReader-${version}-win-x64.exe directly, or use the setup executable 
 The release contains its frontend; Node, Rust and the development server are not needed.
 Microsoft WebView2 Runtime is required; setup handles its installation when missing.
 
-Formats: TXT, Markdown, EPUB 2/3 (text and table of contents).
+Formats: TXT, Markdown, EPUB 2/3, MOBI, AZW, AZW3, PRC, FB2, HTML/HTM (text and available table of contents).
 Commands: open folder ls boss close find chapter mark back refresh backup restore style mode speed help
 Search: Ctrl+F; F3/Shift+F3 next/previous; Esc returns to the original reading position.
 Bookmarks: Ctrl+D. Left/right switches books, preserving existing history and starting unread books at the first line.
@@ -30,6 +30,7 @@ Global boss key: Alt+Q, customizable in /style. Ctrl+C without a selection close
 Commands: ls/dir, cd, cat/type, recent/resume, goto, history, clear/cls, help.
 Progress: whole book or chapter; bar, viewport page count, percentage and estimated remaining pages. File/backup selection stays inside the terminal UI.
 Keyboard: F1 reference; F6 regions; Ctrl+K commands; Ctrl+B library; Ctrl+M selection; Delete/Ctrl+Z remove/undo.
+Font size: Ctrl+Up/Down. Pixel dog: dog toggles the pet; its punctuation effects never change the book text.
 
 EPUB images, complex layouts and DRM-protected books are not rendered. Backups include cached text, categories, progress, bookmarks and settings.
 "@

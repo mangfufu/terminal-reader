@@ -1,5 +1,5 @@
 //! Read EPUB publications as local, inert text. Archive members are never extracted
-//! to disk, scripts/resources are never executed, and all decompression is bounded.
+//! to disk, and scripts/resources are never executed.
 use roxmltree::{Document, Node, ParsingOptions};
 use serde::Serialize;
 use std::{
@@ -8,12 +8,6 @@ use std::{
 };
 use zip::ZipArchive;
 
-pub const MAX_EPUB_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_ARCHIVE_ENTRIES: usize = 10_000;
-const MAX_EXPANDED_BYTES: u64 = 128 * 1024 * 1024;
-const MAX_XML_BYTES: u64 = 16 * 1024 * 1024;
-const MAX_TEXT_BYTES: usize = 16 * 1024 * 1024;
-const MAX_BLOCKS: usize = 200_000;
 
 #[derive(Debug, Serialize)]
 pub struct Block {
@@ -56,7 +50,6 @@ fn xml(text: &str) -> Result<Document<'_>, String> {
             // EPUB 2 commonly declares an XHTML DTD. No external resolver is installed;
             // external files and the network cannot be consulted. roxmltree bounds entities.
             allow_dtd: true,
-            nodes_limit: 500_000,
             ..ParsingOptions::default()
         },
     )
@@ -126,23 +119,16 @@ fn resolve(base_file: &str, href: &str) -> Result<String, String> {
 }
 
 fn read_text(archive: &mut ZipArchive<Cursor<&[u8]>>, path: &str) -> Result<String, String> {
-    let member = archive
+    let mut member = archive
         .by_name(path)
         .map_err(|error| format!("EPUB 缺少或无法读取 {path}：{error}"))?;
     if member.encrypted() {
         return Err("不支持受密码保护的 EPUB".into());
     }
-    if member.size() > MAX_XML_BYTES {
-        return Err(format!("EPUB 文本条目 {path} 超过 16 MB"));
-    }
     let mut bytes = Vec::new();
     member
-        .take(MAX_XML_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("EPUB 解压失败 {path}：{error}"))?;
-    if bytes.len() as u64 > MAX_XML_BYTES {
-        return Err(format!("EPUB 文本条目 {path} 超过 16 MB"));
-    }
     let text = if let Some((encoding, bom)) = encoding_rs::Encoding::for_bom(&bytes) {
         let (text, errors) = encoding.decode_without_bom_handling(&bytes[bom..]);
         if errors {
@@ -188,10 +174,6 @@ fn normalize_entities(text: &str) -> String {
 }
 
 fn inspect_archive(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<(), String> {
-    if archive.len() > MAX_ARCHIVE_ENTRIES {
-        return Err("EPUB 包含超过 10000 个压缩条目".into());
-    }
-    let mut expanded = 0u64;
     let mut names = HashSet::new();
     for index in 0..archive.len() {
         let member = archive
@@ -199,12 +181,6 @@ fn inspect_archive(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<(), String
             .map_err(|error| format!("EPUB 压缩目录损坏：{error}"))?;
         if member.encrypted() {
             return Err("不支持受密码保护的 EPUB".into());
-        }
-        expanded = expanded
-            .checked_add(member.size())
-            .ok_or("EPUB 解压大小溢出")?;
-        if expanded > MAX_EXPANDED_BYTES {
-            return Err("EPUB 解压后超过 128 MB 限制".into());
         }
         let name = member.name();
         if name.contains(['\\', '\0'])
@@ -221,7 +197,6 @@ fn inspect_archive(archive: &mut ZipArchive<Cursor<&[u8]>>) -> Result<(), String
 }
 
 fn preflight_directory(bytes: &[u8]) -> Result<(), String> {
-    // Check counts before ZipArchive allocates a vector for the central directory.
     // ZIP comments have a 16-bit length; the EOCD must finish at the file's end.
     let start = bytes.len().saturating_sub(65_557);
     let eocd = bytes[start..]
@@ -237,10 +212,6 @@ fn preflight_directory(bytes: &[u8]) -> Result<(), String> {
             (offset + 22 + comment == bytes.len()).then_some(offset)
         })
         .ok_or("EPUB 压缩包缺少有效的目录尾记录")?;
-    let count = u16::from_le_bytes([bytes[eocd + 10], bytes[eocd + 11]]) as u64;
-    if count > MAX_ARCHIVE_ENTRIES as u64 {
-        return Err("EPUB 包含超过 10000 个压缩条目".into());
-    }
     if eocd >= 20 && &bytes[eocd - 20..eocd - 16] == b"PK\x06\x07" {
         let locator = eocd - 20;
         let record = u64::from_le_bytes(bytes[locator + 8..locator + 16].try_into().unwrap());
@@ -249,10 +220,6 @@ fn preflight_directory(bytes: &[u8]) -> Result<(), String> {
             || &bytes[record..record + 4] != b"PK\x06\x06"
         {
             return Err("EPUB ZIP64 目录损坏".into());
-        }
-        let count = u64::from_le_bytes(bytes[record + 32..record + 40].try_into().unwrap());
-        if count > MAX_ARCHIVE_ENTRIES as u64 {
-            return Err("EPUB 包含超过 10000 个压缩条目".into());
         }
     }
     Ok(())
@@ -265,7 +232,6 @@ struct Extractor {
     headings: Vec<Chapter>,
     buffer: String,
     kind: &'static str,
-    bytes: usize,
 }
 
 impl Extractor {
@@ -278,10 +244,6 @@ impl Extractor {
         };
         if text.trim().is_empty() {
             return Ok(());
-        }
-        self.bytes += text.len() + 2;
-        if self.bytes > MAX_TEXT_BYTES || self.blocks.len() >= MAX_BLOCKS {
-            return Err("EPUB 正文超过 16 MB 或 200000 段限制".into());
         }
         self.blocks.push(Block {
             text,
@@ -462,9 +424,6 @@ fn parse_ncx(text: &str, path: &str) -> Result<Vec<TocEntry>, String> {
 }
 
 pub fn parse(bytes: &[u8]) -> Result<Publication, String> {
-    if bytes.len() as u64 > MAX_EPUB_BYTES {
-        return Err("EPUB 文件超过 64 MB 限制".into());
-    }
     preflight_directory(bytes)?;
     let mut archive =
         ZipArchive::new(Cursor::new(bytes)).map_err(|error| format!("EPUB 压缩包损坏：{error}"))?;
@@ -551,7 +510,6 @@ pub fn parse(bytes: &[u8]) -> Result<Publication, String> {
     let mut blocks = Vec::new();
     let mut anchors = HashMap::new();
     let mut fallback = Vec::new();
-    let mut text_bytes = 0usize;
     let mut spine_paths = HashSet::new();
     for reference in spine.children().filter(|n| n.has_tag_name("itemref")) {
         if reference.attribute("linear") == Some("no") {
@@ -581,10 +539,6 @@ pub fn parse(bytes: &[u8]) -> Result<Publication, String> {
         let mut extractor = Extractor::default();
         extractor.visit(body, 0, "paragraph")?;
         extractor.flush()?;
-        text_bytes += extractor.bytes;
-        if text_bytes > MAX_TEXT_BYTES || blocks.len() + extractor.blocks.len() > MAX_BLOCKS {
-            return Err("EPUB 正文超过 16 MB 或 200000 段限制".into());
-        }
         let offset = blocks.len();
         if extractor.blocks.is_empty() {
             continue;
@@ -848,7 +802,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_zip_encryption_and_declared_expansion_limit() {
+    fn rejects_zip_encryption() {
         let mut encrypted = fixture(true, vec![]);
         let local = encrypted
             .windows(4)
@@ -861,27 +815,21 @@ mod tests {
         encrypted[local + 6] |= 1;
         encrypted[central + 8] |= 1;
         assert!(parse(&encrypted).unwrap_err().contains("密码"));
-        let mut expanded = fixture(true, vec![]);
-        let central = expanded
-            .windows(4)
-            .position(|bytes| bytes == b"PK\x01\x02")
-            .unwrap();
-        expanded[central + 24..central + 28]
-            .copy_from_slice(&((MAX_EXPANDED_BYTES + 1) as u32).to_le_bytes());
-        assert!(parse(&expanded).unwrap_err().contains("128 MB"));
     }
 
     #[test]
-    fn enforces_archive_and_text_limits_before_large_allocation() {
-        let oversized = "x".repeat(MAX_XML_BYTES as usize + 1);
-        let bytes = archive(vec![("META-INF/container.xml", oversized)]);
-        assert!(parse(&bytes).unwrap_err().contains("16 MB"));
+    fn accepts_text_and_archives_beyond_previous_limits() {
+        let large = "x".repeat(16 * 1024 * 1024 + 1);
+        let bytes = archive(vec![("large.xhtml", large.clone())]);
+        let mut zip = ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
+        assert_eq!(read_text(&mut zip, "large.xhtml").unwrap(), large);
         let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
-        for index in 0..MAX_ARCHIVE_ENTRIES + 1 {
+        for index in 0..10_001 {
             zip.start_file(format!("entry-{index}"), SimpleFileOptions::default())
                 .unwrap();
         }
         let bytes = zip.finish().unwrap().into_inner();
-        assert!(parse(&bytes).unwrap_err().contains("10000"));
+        preflight_directory(&bytes).unwrap();
+        inspect_archive(&mut ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap()).unwrap();
     }
 }

@@ -72,12 +72,23 @@ describe('backup validation', () => {
     expect(() => validateBackup({ ...source, commandHistory: Array.from({ length: 201 }, () => '/books') })).toThrow(/过长/);
   });
 
+  it('round trips backup text beyond the former 128 MiB cap', () => {
+    const source = sample();
+    const text = 'x'.repeat(65 * 1024 * 1024);
+    source.books = [{ id: 'large', name: 'large.txt', content: text, blocks: [{ text, kind: 'paragraph' }] }];
+    const serialized = JSON.stringify(createBackup(source));
+    expect(serialized.length).toBeGreaterThan(128 * 1024 * 1024);
+    const restored = parseBackup(serialized);
+    expect(restored.books[0].content.length).toBe(text.length);
+    expect(restored.books[0].blocks?.[0].text.length).toBe(text.length);
+  });
+
   it('rejects damaged cached books and EPUB chapters outside the document', () => {
     expect(validateBook(sample().books[0])).toEqual(sample().books[0]);
     expect(() => validateBook({ id: 'a', name: 'a.txt', content: null })).toThrow();
     expect(() => validateBook({ id: 'a', name: 'a.epub', content: '', blocks: [{ text: 'x', kind: 'script' }] })).toThrow(/类型/);
     expect(() => validateBook({ id: 'a', name: 'a.epub', content: 'x', blocks: [{ text: 'x', kind: 'paragraph' }], chapters: [{ title: 'missing', block: 1 }] })).toThrow(/不存在/);
-    expect(() => validateBook({ id: 'a', name: 'a.txt', content: 'x'.repeat(16 * 1024 * 1024 + 1) })).toThrow(/过长/);
+    expect(validateBook({ id: 'a', name: 'a.txt', content: 'x'.repeat(16 * 1024 * 1024 + 1) }).content.length).toBe(16 * 1024 * 1024 + 1);
   });
 
   it('round trips categorized books and unused category names with canonical names and deduplication', () => {

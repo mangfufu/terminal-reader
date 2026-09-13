@@ -161,7 +161,7 @@ try {
   assert.equal((await snapshot()).books.length, 3);
   assert.equal((await snapshot()).settings.theme, 'cmd');
 
-  // Demo books are normally in memory; backup restoration also stores them in IndexedDB.
+  // Restoring an existing library must not duplicate its stored books.
   const downloadArchive = async () => {
     const pending = page.waitForEvent('download');
     await command('/backup');
@@ -169,24 +169,22 @@ try {
     const chunks = []; for await (const chunk of stream) chunks.push(chunk);
     return Buffer.concat(chunks);
   };
-  await command('/demo');
-  const withDemo = await downloadArchive();
-  const demoBackup = JSON.parse(withDemo.toString('utf8'));
-  assert.equal(demoBackup.lastBook, 'demo:01');
-  assert.equal(demoBackup.books.filter(book => book.id === 'demo:01').length, 1);
+  const archive = await downloadArchive();
+  const savedBackup = JSON.parse(archive.toString('utf8'));
+  assert.equal(savedBackup.books.length, 3);
+  const previousBook = savedBackup.lastBook;
   await command('/restore');
-  await page.getByLabel('备份内容', { exact: true }).fill((withDemo).toString('utf8'));
+  await page.getByLabel('备份内容', { exact: true }).fill((archive).toString('utf8'));
   await page.getByRole('button', { name: '预览备份', exact: true }).click();
   await page.getByRole('button', { name: '合并并恢复', exact: true }).click();
-  await page.locator('#notice').filter({ hasText: '已恢复 4 本书' }).waitFor();
+  await page.locator('#notice').filter({ hasText: '已恢复 3 本书' }).waitFor();
   await page.reload(); await page.locator('#content').waitFor();
-  assert.equal((await snapshot()).lastBook, 'demo:01');
+  assert.equal((await snapshot()).lastBook, previousBook);
   await command('/books');
-  assert.equal(await page.locator('.book-item').count(), 4);
-  assert.equal(await page.locator('.book-item[title="demo:01"]').count(), 1, 'Reload must not append a second copy of a restored demo book');
+  assert.equal(await page.locator('.book-item').count(), 3);
   const reExported = JSON.parse((await downloadArchive()).toString('utf8'));
-  assert.equal(reExported.books.length, 4);
-  assert.equal(new Set(reExported.books.map(book => book.id)).size, 4, 'A restored demo archive must remain exportable without duplicate IDs');
+  assert.equal(reExported.books.length, 3);
+  assert.equal(new Set(reExported.books.map(book => book.id)).size, 3, 'A restored archive must remain exportable without duplicate IDs');
   assert.deepEqual(errors, []);
-  console.log('PASS: backup download, EPUB metadata, merge restore, progress/bookmark/preferences recovery, invalid-file isolation, settings/IndexedDB failure rollback, library filtering/removal/undo, demo restore/restart/re-export.');
+  console.log('PASS: backup download, EPUB metadata, merge restore, progress/bookmark/preferences recovery, invalid-file isolation, settings/IndexedDB failure rollback, library filtering/removal/undo, restore/restart/re-export.');
 } finally { await browser.close(); }

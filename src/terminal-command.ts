@@ -11,7 +11,9 @@ export const commandAliases: Record<string, string> = {
   cls: 'clear', exit: 'close', history: 'history', man: 'help',
 };
 export const quickStart: [string, string][] = [
-  ['open', '打开 TXT、Markdown、EPUB；folder 添加整个文件夹'],
+  ['open', '打开 TXT、Markdown、EPUB、MOBI、AZW/AZW3、PRC、FB2、HTML；folder 添加整个文件夹'],
+  ['Ctrl+↑ / Ctrl+↓', '放大 / 缩小字号，保留阅读位置'],
+  ['dog', '召唤像素小狗，再次输入收回；也可在菜单中操作'],
   ['ls 或 dir', '查看书库；↑ ↓ 选择，Enter 阅读'],
   ['cat 1 或 type "书名.txt"', '按列表编号或书名打开；Tab 补全书名'],
   ['cd "技术" / cd ..', '进入分类 / 返回全部；pwd 查看当前位置'],

@@ -2,9 +2,11 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { FilePicker } from './file-picker';
 import { BossScreen } from './boss-screen';
+import { TerminalDog } from './dog';
+import { decodeImported, type ImportedBook } from './ebook-import';
 import { PRIVATE_CATEGORY, isPrivateBook } from './privacy';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { demo, parseDocument, chaptersFor, sortBooks, type Book, type Position, type Block } from './document';
+import { parseDocument, chaptersFor, sortBooks, type Book, type Position, type Block } from './document';
 import { loadBooks as loadPublicBooks, saveBooks as savePublicBooks, deleteBooks as deletePublicBooks } from './storage';
 import { Vault } from './vault';
 import { Credentials } from './credentials';
@@ -45,7 +47,7 @@ app.innerHTML = `
     <div id="welcome">
       <div id="shell-banner">Windows PowerShell</div>
       <div class="reader-banner">Terminal Reader [Version ${version}]</div>
-      <p class="muted">输入 help 快速上手 · open 导入 · ls 查看 · resume 继续</p><p class="welcome-actions"><button id="open-book" aria-label="打开文件">/open</button> 打开文件，<button id="demo-book" aria-label="读一段示例">/demo</button> 试读。</p>
+      <p class="muted">输入 help 快速上手 · open 导入 · ls 查看 · resume 继续</p><p class="welcome-actions"><button id="open-book" aria-label="打开文件">/open</button> 打开文件。</p>
     </div>
     <div id="session-command" class="session-command" hidden><span id="session-prompt"></span> <span class="shell-command">/open</span> <span id="session-file" class="shell-argument"></span></div>
     <article id="content" hidden></article>
@@ -106,13 +108,14 @@ function focusCommand() {
   input.value = '/'; selected = 0; historyIndex = -1; input.focus(); renderSuggestions();
 }
 const commands = [
-  ['open', '打开 TXT / Markdown / EPUB'], ['folder', '添加文件夹'], ['books', '查看书库'],
+  ['open', '打开文本 / EPUB / MOBI / AZW3 等电子书'], ['folder', '添加文件夹'], ['books', '查看书库'],
   ['ls', '列出书籍'], ['dir', '列出书籍'], ['cd', '切换分类'], ['cat', '打开书名或编号'], ['type', '打开书名或编号'], ['pwd', '当前分类'],
   ['read', '打开书名或编号'], ['recent', '最近阅读'], ['resume', '继续上次阅读'], ['progress', '章节进度与剩余页数'], ['goto', '按百分比跳转'], ['history', '命令历史'], ['clear', '清屏'], ['guide', '快速上手'], ['boss', '老板键 / 随机程序输出'], ['find', '搜索正文'], ['chapter', '章节目录'], ['mark', '添加与管理书签'], ['back', '返回跳转前的位置'],
   ['refresh', '刷新当前书籍源文件'], ['backup', '导出完整备份'], ['restore', '恢复备份'],
   ['update', '在线升级 / GitHub Release 下载'],
+  ['dog', '召唤 / 收回像素小狗'],
   ['close', '关闭当前书籍 / 返回主页'], ['next', '下一份文件'], ['prev', '上一份文件'], ['scroll', '开始 / 暂停自动滚动'],
-  ['speed', '调节滚动速度'], ['style', '外观与字体'], ['mode', '纯阅读 / 模拟命令行'], ['help', '命令与快捷键'], ['demo', '阅读示例'],
+  ['speed', '调节滚动速度'], ['style', '外观与字体'], ['mode', '纯阅读 / 模拟命令行'], ['help', '命令与快捷键'],
 ] as const;
 
 let privateActive = false;
@@ -422,7 +425,7 @@ function showQuickStart() {
   showPanel('快速上手 / Terminal Reader'); panelBody.tabIndex = 0;
   const intro = document.createElement('p'); intro.textContent = '直接输入命令，Enter 执行；也兼容 /open 等原有写法。鼠标仍可点击文字。'; panelBody.append(intro);
   for (const [command, description] of quickStart) { const line = document.createElement('p'); line.className = 'keyboard-entry'; line.textContent = `${command}  ${description}`; panelBody.append(line); }
-  panelBody.append(button('打开文件', () => void importBooks(false)), button('试读示例', () => void runCommand('demo')), button('开始使用', () => { closePanel(); input.focus(); }));
+  panelBody.append(button('打开文件', () => void importBooks(false)), button('开始使用', () => { closePanel(); input.focus(); }));
 }
 
 function capturePosition(): Position {
@@ -492,7 +495,20 @@ function applyStyle() {
   savePreferences();
 }
 
+const dog = new TerminalDog(app.querySelector('.terminal-surface')!, reader, content,
+  () => boss.active || !panel.hidden || !keyboardHelp.hidden || filePicker.active || credentials.active || !$('profile-menu').hidden);
+
+function resizeFont(direction: number) {
+  rememberPosition();
+  settings.fontSize = Math.max(12, Math.min(24, settings.fontSize + direction));
+  applyStyle();
+  const field = panelBody.querySelector<HTMLInputElement>('[aria-label="正文字号"]');
+  if (field) field.value = String(settings.fontSize);
+  notify(`字号 ${settings.fontSize}`, 1200);
+}
+
 function openBook(book: Book, mode: 'resume' | 'continue' = 'resume') {
+  dog.reset();
   if (current) rememberPosition();
   if (mode === 'resume') setAutomatic(false);
   closePanel();
@@ -621,7 +637,7 @@ function showProfileMenu() {
   modeToggle.setAttribute('role', 'menuitemcheckbox');
   modeToggle.setAttribute('aria-checked', String(settings.mode === 'simulate'));
   menu.append(modeToggle);
-  for (const [label, command] of [['打开文件', 'open'], ['书库', 'books'], ['设置', 'style'], ['命令与帮助', 'help']]) {
+  for (const [label, command] of [['打开文件', 'open'], ['书库', 'books'], ['设置', 'style'], [dog.active ? '收回小狗' : '小狗', 'dog'], ['命令与帮助', 'help']]) {
     const item = button(label, () => void runCommand(command));
     item.setAttribute('role', 'menuitem');
     menu.append(item);
@@ -727,7 +743,7 @@ async function saveClassification(changedBooks: Book[], nextCategories: string[]
 
 function jumpTo(anchor: Position, bookId = current?.id, remember = true) {
   if (!bookId) return;
-  const book = books.find(book => book.id === bookId) ?? (bookId === demo.id ? demo : undefined);
+  const book = books.find(book => book.id === bookId);
   if (!book) { notify('这本书已移出书库，请重新导入后再跳转。'); return; }
   if (remember && current) { jumpHistory.push({ bookId: current.id, position: capturePosition() }); if (jumpHistory.length > 100) jumpHistory.shift(); }
   if (bookId !== current?.id) openBook(book);
@@ -986,7 +1002,17 @@ function showHelp() {
   appendKeyboardGuide(panelBody);
 }
 
-async function acceptImported(imported: { files: Book[]; warnings: string[] }, openFirst = true) {
+async function acceptImported(imported: { files: ImportedBook[]; warnings: string[] }, openFirst = true) {
+  const decoded: Book[] = [];
+  for (const file of imported.files) {
+    try {
+      if (file.encoded) notify(`正在解析 ${file.name}…`, 120000);
+      const book = await decodeImported(file);
+      decoded.push(book);
+    } catch (error) { imported.warnings.push(`${file.name}：${error instanceof Error ? error.message : '解析失败'}`); }
+    delete file.encoded;
+  }
+  imported.files = decoded;
   imported.files = imported.files.map(book => {
     const existing = books.find(item => item.id === book.id);
     return existing ? { ...book, category: existing.category } : book;
@@ -996,7 +1022,7 @@ async function acceptImported(imported: { files: Book[]; warnings: string[] }, o
   for (const book of imported.files) map.set(book.id, book);
   books = sortBooks([...map.values()]);
   if (openFirst && imported.files.length) openBook(sortBooks(imported.files)[0]);
-  notify(imported.warnings.length ? `已读取 ${imported.files.length} 份；${imported.warnings.join('；')}` : imported.files.length ? `已读取 ${imported.files.length} 份文件` : '没有找到可读的 TXT / Markdown / EPUB 文件。', 7500);
+  notify(imported.warnings.length ? `已读取 ${imported.files.length} 份；${imported.warnings.join('；')}` : imported.files.length ? `已读取 ${imported.files.length} 份文件` : '没有找到可读文件。支持 TXT、Markdown、EPUB、MOBI、AZW、AZW3、PRC、FB2、HTML。', 7500);
 }
 
 async function handleNativePaths(paths: string[]) {
@@ -1017,7 +1043,7 @@ async function handleNativePaths(paths: string[]) {
 
 async function refreshBooks(ids = current ? [current.id] : []) {
   if (importing) return;
-  const paths = ids.filter(id => id !== demo.id);
+  const paths = ids;
   if (!paths.length) { notify('没有可刷新的源文件。'); return; }
   if (!isTauri()) { notify('刷新源文件请使用桌面程序。'); return; }
   importing = true; setAutomatic(false);
@@ -1064,7 +1090,6 @@ async function exportBackup(encrypt = false) {
 
 async function reviewBackup(text: string) {
   try {
-    if (text.length > 128 * 1024 * 1024) throw new Error('备份超过容量限制');
     let decoded = JSON.parse(text.replace(/^\uFEFF/, ''));
     if (decoded?.format === 'terminal-reader-encrypted') {
       const envelope = encryptedData(decoded);
@@ -1179,6 +1204,7 @@ async function executeCommand(name: string, argument = '') {
     case 'private': case 'vault': await enterVault(argument); break;
     case 'lock': await lockVault(); break;
     case 'boss': boss.toggle(); break;
+    case 'dog': notify(dog.toggle() ? '汪！再次输入 dog 收回小狗。' : '小狗回家了。'); break;
     case 'find': showFind(argument || undefined); break;
     case 'chapter': showChapters(); break;
     case 'mark': showBookmarks(argument); break;
@@ -1206,10 +1232,6 @@ async function executeCommand(name: string, argument = '') {
       } else showStyle();
       break;
     case 'help': showQuickStart(); break;
-    case 'demo':
-      if (importing) { notify('书库正在处理中，请稍候。'); break; }
-      if (!books.some(book => book.id === demo.id)) books = sortBooks([...books, demo]);
-      openBook(books.find(book => book.id === demo.id)!); break;
     default: notify(`没有 /${name} 命令。输入 /help 查看帮助。`);
   }
   if (panel.hidden) (name === 'clear' ? input : reader).focus({ preventScroll: true });
@@ -1302,6 +1324,9 @@ document.addEventListener('keydown', event => {
   }
   if (event.key === 'F1') { event.preventDefault(); toggleKeyboardHelp(); return; }
   if (filePicker.active) { filePicker.handleKey(event); return; }
+  if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+    event.preventDefault(); resizeFont(event.key === 'ArrowUp' ? 1 : -1); return;
+  }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !event.shiftKey && !event.altKey) {
     const field = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement ? event.target : null;
     if (!document.getSelection()?.toString() && !(field && field.selectionStart !== field.selectionEnd)) { event.preventDefault(); closeCurrentBook(); }
@@ -1380,7 +1405,6 @@ $('reading-progress').onclick = () => {
 };
 new ResizeObserver(() => updateProgress()).observe(reader);
 $('open-book').onclick = () => void importBooks(false);
-$('demo-book').onclick = () => void runCommand('demo');
 $('new-file').onclick = () => void runCommand('open');
 $('menu').onclick = showProfileMenu;
 document.addEventListener('pointerdown', event => {
@@ -1489,8 +1513,8 @@ async function checkStartupUpdate() {
   $('update-download').setAttribute('aria-label', `升级到 ${update.version}`);
   $('update-notice').hidden = false;
 }
-window.addEventListener('beforeunload', () => { rememberPosition(); savePreferences(); simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
-if (import.meta.hot) import.meta.hot.dispose(() => { simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
+window.addEventListener('beforeunload', () => { rememberPosition(); savePreferences(); dog.dispose(); simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
+if (import.meta.hot) import.meta.hot.dispose(() => { dog.dispose(); simulation.destroy(); view.destroy(); unlistenProgress?.(); unlistenOpen?.(); });
 
 async function init() {
   applyStyle();
@@ -1516,8 +1540,8 @@ async function init() {
     extractLegacyBooks();
     categories = normalizeCategories([...categories, ...new Set(books.flatMap(book => book.category === undefined ? [] : [book.category]))]);
     try { preferenceStore().setItem('reader-categories', JSON.stringify(categories)); } catch { notify('分类暂时无法保存。'); }
-    const previous = books.find(book => book.id === lastBook) ?? (lastBook === demo.id ? demo : undefined);
-    if (previous) { if (previous.id === demo.id && !books.some(book => book.id === demo.id)) books = sortBooks([...books, demo]); openBook(previous); }
+    const previous = books.find(book => book.id === lastBook);
+    if (previous) openBook(previous);
   } catch (error) { notify(`书库读取失败：${String(error)}`); }
   if (isTauri()) {
     try {

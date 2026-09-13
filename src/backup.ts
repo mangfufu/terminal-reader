@@ -1,4 +1,5 @@
 import type { Book, Block, Position } from './document';
+import { ebookFormats } from './document';
 
 export interface Bookmark {
   id: string;
@@ -23,10 +24,6 @@ export interface BackupData {
   recentReads?: Record<string, { at: number; percent: number }>;
 }
 
-export const MAX_BACKUP_BYTES = 128 * 1024 * 1024;
-const MAX_BOOK_TEXT = 16 * 1024 * 1024;
-const MAX_TOTAL_TEXT = 64 * 1024 * 1024;
-const MAX_BOOKS = 10_000;
 const unsafeKeys = new Set(['__proto__', 'prototype', 'constructor']);
 export const MAX_CATEGORIES = 200;
 export const MAX_CATEGORY_LENGTH = 40;
@@ -51,7 +48,7 @@ function number(value: unknown, label: string, min: number, max: number, integer
   return value;
 }
 
-function array(value: unknown, label: string, maxLength: number): unknown[] {
+function array(value: unknown, label: string, maxLength = Infinity): unknown[] {
   if (!Array.isArray(value) || value.length > maxLength) invalid(`${label}列表无效或过长`);
   return value;
 }
@@ -73,7 +70,7 @@ export function normalizeCategory(value: unknown): string {
 
 /** Keep first-seen order; old book-only backups can supply their derived names. */
 export function normalizeCategories(value: unknown): string[] {
-  const categories = [...new Set(array(value, '分类', MAX_BOOKS).map(normalizeCategory))];
+  const categories = [...new Set(array(value, '分类').map(normalizeCategory))];
   if (categories.length > MAX_CATEGORIES) invalid(`分类最多 ${MAX_CATEGORIES} 个`);
   return categories;
 }
@@ -82,10 +79,10 @@ export function normalizeCategories(value: unknown): string[] {
 export function validatePosition(value: unknown): Position {
   const raw = record(value, '阅读位置');
   const result: Position = {
-    block: number(raw.block, '段落编号', 0, 2_000_000, true),
-    fraction: number(raw.fraction, '段落位置', 0, 100_000),
+    block: number(raw.block, '段落编号', 0, Number.MAX_SAFE_INTEGER, true),
+    fraction: number(raw.fraction, '段落位置', 0, Number.MAX_SAFE_INTEGER),
   };
-  if (raw.offset !== undefined) result.offset = number(raw.offset, '字符位置', 0, MAX_BOOK_TEXT, true);
+  if (raw.offset !== undefined) result.offset = number(raw.offset, '字符位置', 0, Number.MAX_SAFE_INTEGER, true);
   if (raw.lineRatio !== undefined) result.lineRatio = number(raw.lineRatio, '行内位置', -4, 4);
   if (raw.gap !== undefined) result.gap = number(raw.gap, '段落间距位置', 0, 1);
   return result;
@@ -97,30 +94,27 @@ export function validateBook(value: unknown): Book {
   const result: Book = {
     id: identifier(raw.id, '书籍编号'),
     name: string(raw.name, '文件名', 4096),
-    content: string(raw.content, '正文', MAX_BOOK_TEXT, true),
+    content: string(raw.content, '正文', Infinity, true),
   };
   if (raw.format !== undefined) {
-    if (raw.format !== 'epub') invalid('电子书格式不受支持');
-    result.format = raw.format;
+    if (!ebookFormats.includes(raw.format as typeof ebookFormats[number])) invalid('电子书格式不受支持');
+    result.format = raw.format as Book['format'];
   }
   if (raw.title !== undefined) result.title = string(raw.title, '书名', 4096, true);
   if (raw.author !== undefined) result.author = string(raw.author, '作者', 4096, true);
   if (raw.category !== undefined) result.category = normalizeCategory(raw.category);
   if (raw.blocks !== undefined) {
-    let textLength = 0;
-    result.blocks = array(raw.blocks, '正文段落', 200_000).map(value => {
+    result.blocks = array(raw.blocks, '正文段落').map(value => {
       const block = record(value, '正文段落');
       if (!['paragraph', 'heading', 'code', 'quote'].includes(block.kind as string)) invalid('段落类型不受支持');
-      const text = string(block.text, '段落正文', MAX_BOOK_TEXT, true);
-      textLength += text.length;
-      if (textLength > MAX_BOOK_TEXT) invalid('书籍正文过大');
+      const text = string(block.text, '段落正文', Infinity, true);
       return { text, kind: block.kind as Block['kind'] };
     });
   }
   if (raw.chapters !== undefined) {
-    result.chapters = array(raw.chapters, '章节目录', 20_000).map(value => {
+    result.chapters = array(raw.chapters, '章节目录').map(value => {
       const chapter = record(value, '章节');
-      const block = number(chapter.block, '章节段落编号', 0, 2_000_000, true);
+      const block = number(chapter.block, '章节段落编号', 0, Number.MAX_SAFE_INTEGER, true);
       if (result.blocks && block >= result.blocks.length) invalid('章节指向了不存在的正文段落');
       return { title: string(chapter.title, '章节标题', 4096), block, ...(chapter.level === undefined ? {} : { level: number(chapter.level, '章节层级', 1, 20, true) }) };
     });
@@ -163,19 +157,15 @@ export function validateBackup(value: unknown): BackupData {
   if (!Number.isFinite(Date.parse(exportedAt))) invalid('导出时间无效');
 
   const ids = new Set<string>();
-  let totalText = 0;
-  const books = array(raw.books, '书库', MAX_BOOKS).map(value => {
+  const books = array(raw.books, '书库').map(value => {
     const book = validateBook(value);
     if (ids.has(book.id)) invalid('书库包含重复书籍编号');
     ids.add(book.id);
-    totalText += book.content.length + (book.blocks?.reduce((sum, block) => sum + block.text.length, 0) ?? 0);
-    if (totalText > MAX_TOTAL_TEXT) invalid('备份正文总量过大');
     return book;
   });
 
   const positions: Record<string, Position> = {};
   const positionEntries = Object.entries(record(raw.positions ?? {}, '阅读进度'));
-  if (positionEntries.length > MAX_BOOKS * 2) invalid('阅读进度条目过多');
   for (const [id, position] of positionEntries) positions[identifier(id, '阅读进度编号')] = validatePosition(position);
 
   const markIds = new Set<string>();
@@ -193,12 +183,11 @@ export function validateBackup(value: unknown): BackupData {
     ...normalizeCategories(raw.categories ?? []),
     ...normalizeCategories(books.flatMap(book => book.category === undefined ? [] : [book.category])),
   ]);
-  const recentReads = Object.fromEntries(Object.entries(record(raw.recentReads ?? {}, '最近阅读')).slice(0, MAX_BOOKS).map(([id, item]) => { const entry = record(item, '最近阅读'); return [identifier(id, '书籍编号'), { at: number(entry.at, '阅读时间', 0, 8640000000000000), percent: number(entry.percent, '阅读百分比', 0, 100) }]; }));
+  const recentReads = Object.fromEntries(Object.entries(record(raw.recentReads ?? {}, '最近阅读')).map(([id, item]) => { const entry = record(item, '最近阅读'); return [identifier(id, '书籍编号'), { at: number(entry.at, '阅读时间', 0, 8640000000000000), percent: number(entry.percent, '阅读百分比', 0, 100) }]; }));
   return { format: 'terminal-reader-backup', version: 1, ...(raw.workspace ? { workspace: raw.workspace as 'public' | 'vault' } : {}), exportedAt, recentReads, books, positions, bookmarks, settings, lastBook, commandHistory, categories };
 }
 
 export function parseBackup(text: string): BackupData {
-  if (text.length > MAX_BACKUP_BYTES || new TextEncoder().encode(text).byteLength > MAX_BACKUP_BYTES) invalid('备份超过 128 MiB');
   let value: unknown;
   try { value = JSON.parse(text.replace(/^\uFEFF/, '')); }
   catch { invalid('文件不是有效的 JSON'); }

@@ -1,10 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use serde::Serialize;
+use base64::Engine;
 use std::{
     collections::HashSet,
     fs,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
 };
 use tauri::{Emitter, Manager};
@@ -16,10 +17,6 @@ mod epub;
 mod filesystem;
 mod updates;
 
-const MAX_FILE_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_TOTAL_BYTES: u64 = 128 * 1024 * 1024;
-const MAX_FILES: usize = 1000;
-const MAX_BACKUP_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Serialize)]
 struct ImportedFile {
@@ -36,6 +33,8 @@ struct ImportedFile {
     blocks: Option<Vec<epub::Block>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     chapters: Option<Vec<epub::Chapter>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    encoded: Option<String>,
 }
 
 #[derive(Serialize, Default)]
@@ -55,7 +54,7 @@ fn supported(path: &Path) -> bool {
     path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
         matches!(
             s.to_ascii_lowercase().as_str(),
-            "txt" | "md" | "markdown" | "epub"
+            "txt" | "md" | "markdown" | "epub" | "mobi" | "azw" | "azw3" | "prc" | "fb2" | "html" | "htm"
         )
     })
 }
@@ -122,17 +121,8 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
     pending.sort();
     pending.reverse();
     let mut seen = HashSet::new();
-    let mut total = 0;
-    let mut visited = 0;
     let mut processed = 0;
     while let Some(path) = pending.pop() {
-        visited += 1;
-        if visited > 20_000 || result.files.len() >= MAX_FILES || total >= MAX_TOTAL_BYTES {
-            result.warnings.push(
-                "已达本轮导入上限（1000 份 / 128 MB / 20000 个目录项），可分批添加子文件夹".into(),
-            );
-            break;
-        }
         let metadata = match fs::symlink_metadata(&path) {
             Ok(value) => value,
             Err(error) => {
@@ -166,12 +156,6 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
                                 {
                                     continue;
                                 }
-                                if pending.len() + children.len() >= 20_000 {
-                                    result
-                                        .warnings
-                                        .push("目录项过多，部分子目录未扫描；请分批添加".into());
-                                    break;
-                                }
                                 children.push(entry.path());
                             }
                             Err(error) => result.warnings.push(format!("目录读取失败：{error}")),
@@ -197,20 +181,10 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
             .extension()
             .and_then(|s| s.to_str())
             .is_some_and(|s| s.eq_ignore_ascii_case("epub"));
-        let limit = if is_epub {
-            epub::MAX_EPUB_BYTES
-        } else {
-            MAX_FILE_BYTES
-        };
-        if metadata.len() > limit || total + metadata.len() > MAX_TOTAL_BYTES {
-            result.warnings.push(format!(
-                "{}：超出单文件 {} MB 或本轮 128 MB 限制",
-                path.display(),
-                limit / 1024 / 1024
-            ));
-            continue;
-        }
-        let imported = read_limited(&path, limit).and_then(|data| {
+        let worker_format = path.extension().and_then(|s| s.to_str()).is_some_and(|s| {
+            matches!(s.to_ascii_lowercase().as_str(), "mobi" | "azw" | "azw3" | "prc" | "fb2" | "html" | "htm")
+        });
+        let imported = fs::read(&path).map_err(|error| error.to_string()).and_then(|data| {
             let mut file = ImportedFile {
                 id: canonical.to_string_lossy().to_string(),
                 name: path
@@ -224,6 +198,7 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
                 author: None,
                 blocks: None,
                 chapters: None,
+                encoded: None,
             };
             if is_epub {
                 let book = epub::parse(&data)?;
@@ -238,27 +213,20 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
                         .into_iter()
                         .map(|warning| format!("{}：{warning}", path.display())),
                 );
+            } else if worker_format {
+                // Parsing runs in a disposable frontend worker; never persist this payload.
+                if data.is_empty() { return Err("空文件".into()); }
+                file.encoded = Some(base64::engine::general_purpose::STANDARD.encode(&data));
             } else {
                 file.content = decode(&data)?;
             }
-            if file.content.trim().is_empty() {
+            if file.encoded.is_none() && file.content.trim().is_empty() {
                 return Err("空文件".into());
             }
             Ok(file)
         });
         match imported {
             Ok(file) => {
-                // EPUB text may be much larger than its compressed source. Count
-                // both forms so a batch of small, highly compressed books stays bounded.
-                let import_bytes = metadata.len().max(file.content.len() as u64);
-                if total + import_bytes > MAX_TOTAL_BYTES {
-                    result.warnings.push(format!(
-                        "{}：提取正文后超出本轮 128 MB 限制，请分批导入",
-                        path.display()
-                    ));
-                    continue;
-                }
-                total += import_bytes;
                 result.files.push(file);
             }
             Err(error) => result.warnings.push(format!("{}：{error}", path.display())),
@@ -270,21 +238,6 @@ fn import_files(paths: Vec<String>, mut progress: impl FnMut(ImportProgress)) ->
         });
     }
     result
-}
-
-fn read_limited(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
-    let file = fs::File::open(path).map_err(|error| error.to_string())?;
-    if file.metadata().map_err(|error| error.to_string())?.len() > limit {
-        return Err(format!("文件超过 {} MB 限制", limit / 1024 / 1024));
-    }
-    let mut bytes = Vec::new();
-    file.take(limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > limit {
-        return Err(format!("文件超过 {} MB 限制", limit / 1024 / 1024));
-    }
-    Ok(bytes)
 }
 
 #[tauri::command]
@@ -299,8 +252,8 @@ async fn import_paths(app: tauri::AppHandle, paths: Vec<String>) -> Result<Impor
 }
 
 fn write_backup(path: &Path, json: &str, overwrite: bool) -> Result<(), String> {
-    if json.is_empty() || json.len() as u64 > MAX_BACKUP_BYTES {
-        return Err("备份为空或超过 128 MB 限制".into());
+    if json.is_empty() {
+        return Err("备份为空".into());
     }
     let parent = path.parent().ok_or("备份目标目录无效")?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)
@@ -332,7 +285,7 @@ async fn export_backup(path: String, contents: String, overwrite: bool) -> Resul
 #[tauri::command]
 async fn import_backup(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let bytes = read_limited(Path::new(&path), MAX_BACKUP_BYTES)?;
+        let bytes = fs::read(&path).map_err(|error| error.to_string())?;
         let json = String::from_utf8(bytes).map_err(|_| "备份须为 UTF-8 JSON 文件")?;
         Ok(json.trim_start_matches('\u{feff}').to_owned())
     }).await.map_err(|e| e.to_string())?
@@ -422,6 +375,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn imports_extended_ebook_formats_as_payloads() {
+        let dir = tempfile::tempdir().unwrap();
+        for extension in ["MOBI", "AZW", "azw3", "prc", "fb2", "html", "htm"] {
+            let path = dir.path().join(format!("sample.{extension}"));
+            assert!(supported(&path));
+            fs::write(path, b"synthetic binary\0sample").unwrap();
+        }
+        let result = import_files(vec![dir.path().to_string_lossy().to_string()], |_| {});
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.files.len(), 7);
+        for file in result.files {
+            assert!(file.content.is_empty());
+            assert_eq!(base64::engine::general_purpose::STANDARD.decode(file.encoded.unwrap()).unwrap(), b"synthetic binary\0sample");
+        }
+    }
+
+    #[test]
+    fn imports_books_above_previous_size_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("large.txt"), vec![b'x'; 9 * 1024 * 1024]).unwrap();
+        fs::write(dir.path().join("large.mobi"), vec![b'x'; 65 * 1024 * 1024]).unwrap();
+        let result = import_files(vec![dir.path().to_string_lossy().to_string()], |_| {});
+        assert!(result.warnings.is_empty());
+        assert_eq!(result.files.len(), 2);
+        assert_eq!(result.files.iter().find(|file| file.name == "large.txt").unwrap().content.len(), 9 * 1024 * 1024);
+    }
+
+    #[test]
     fn decodes_chinese_and_rejects_binary() {
         assert_eq!(decode("夜里的书店".as_bytes()).unwrap(), "夜里的书店");
         assert_eq!(decode(&[0xff, 0xfe, 0x66, 0x4e]).unwrap(), "书");
@@ -453,7 +434,7 @@ mod tests {
     }
 
     #[test]
-    fn backup_writes_atomically_and_bounded_reads_reject_oversize() {
+    fn backup_writes_atomically() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("backup.json");
         write_backup(&path, r#"{"version":1}"#, false).unwrap();
@@ -461,10 +442,9 @@ mod tests {
         assert_eq!(fs::read_to_string(&path).unwrap(), r#"{"version":1}"#);
         write_backup(&path, r#"{"version":2}"#, true).unwrap();
         assert_eq!(
-            String::from_utf8(read_limited(&path, MAX_BACKUP_BYTES).unwrap()).unwrap(),
+            fs::read_to_string(&path).unwrap(),
             r#"{"version":2}"#
         );
-        assert!(read_limited(&path, 2).is_err());
         assert!(write_backup(&path, "", true).is_err());
         assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
     }

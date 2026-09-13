@@ -63,6 +63,7 @@ export function keyboardRows(list: HTMLElement, initial = 0, column = 0) {
 }
 
 export const keyboardGuide: [string, [string, string][]][] = [
+  ['字号', [['Ctrl+↑ / Ctrl+↓', '放大 / 缩小字号（12–24），保留阅读位置']]],
   ['通用', [['F1', '打开 / 关闭键盘速查，返回原焦点'], ['Tab / Shift+Tab', '下一个 / 上一个控件'], ['F6 / Shift+F6', '下一个 / 上一个区域'], ['Enter / 空格', '执行当前文字操作；空格展开折叠项'], ['Esc', '取消当前编辑、退出子界面，再返回阅读'], ['Ctrl+K 或 /', '输入命令；输入框中用 Ctrl+K'], ['F10', '终端外观与菜单'], ['Alt+Q（全局，可自定义）', '老板键：立即切换随机程序输出，再按恢复']]],
   ['入口', [['Ctrl+O / Ctrl+Shift+O', '打开文件 / 文件夹'], ['Ctrl+C', '没有选中文字时关闭当前书籍并回主页；选中文字时复制'], ['Ctrl+B', '书库'], ['Ctrl+J', '章节'], ['Ctrl+D', '书签'], ['Ctrl+,', '外观与阅读设置'], ['Ctrl+Shift+B / Ctrl+Shift+R', '导出 / 恢复备份']]],
   ['阅读与搜索', [['↑ ↓ / PageUp PageDown / Home End', '滚动 / 翻页 / 首尾'], ['← →', '上一份 / 下一份文件，恢复历史位置'], ['空格', '开始 / 暂停自动滚动'], ['Ctrl+F', '书库或章节内筛选；其他界面搜索正文'], ['Ctrl+Shift+F', '直接搜索正文'], ['F3 / Shift+F3', '下一个 / 上一个搜索结果'], ['Alt+←', '返回跳转前的位置']]],

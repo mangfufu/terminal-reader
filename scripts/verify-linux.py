@@ -103,7 +103,9 @@ with tempfile.TemporaryDirectory(prefix='terminal-reader-linux-smoke-') as direc
                 command('/chapter')
                 screenshot('epub-chapters.png')
                 xdotool('key', 'Escape')
-            command('/demo')
+            reading_book = pathlib.Path(directory) / 'reading.md'
+            reading_book.write_text('# Reading check\n\n' + '\n\n'.join(f'Paragraph {i}. Terminal reading text.' for i in range(80)), encoding='utf-8')
+            command(f'/open {reading_book}')
             screenshot('reading.png')
             command('/chapter')
             screenshot('chapters.png')

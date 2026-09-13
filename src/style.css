@@ -73,7 +73,8 @@ button svg { pointer-events: none; }
 [data-chrome='linux'] .window-button.close { background: #524b50; }
 [data-chrome='linux'] .window-button.close:hover { background: #665d64; }
 
-.terminal-surface { display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--bg); }
+.terminal-surface { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; background: var(--bg); }
+.terminal-dog { position: absolute; top: 0; left: 0; pointer-events: none; image-rendering: pixelated; }
 #reader {
   flex: 0 1 auto; min-height: 0; position: relative; overflow: auto; padding: 7px 8px 0; outline: none;
   scrollbar-width: thin; scrollbar-color: #77777780 transparent; scroll-behavior: auto; overflow-anchor: none; tab-size: 4;

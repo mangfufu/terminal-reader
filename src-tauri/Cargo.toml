@@ -1,6 +1,6 @@
 [package]
 name = "terminal-reader"
-version = "0.6.1"
+version = "0.7.0"
 description = "A quiet terminal-shaped desktop reader"
 edition = "2021"
 
@@ -23,6 +23,7 @@ semver = "1"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 html-escape = "0.2.15"
+base64 = "0.22"
 
 [profile.release]
 strip = true

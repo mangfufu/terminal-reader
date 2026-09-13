@@ -4314,8 +4314,9 @@ dependencies = [
 
 [[package]]
 name = "terminal-reader"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
+ "base64 0.22.1",
  "encoding_rs",
  "html-escape",
  "reqwest 0.12.28",

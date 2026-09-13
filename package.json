@@ -1,6 +1,6 @@
 {
   "name": "terminal-reader",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -27,10 +27,14 @@
     "desktop:linux": "tauri build --bundles deb,appimage",
     "test:terminal": "node scripts/verify-terminal-features.mjs",
     "test:workspaces": "node scripts/verify-workspaces.mjs",
-    "test:native-workspaces": "node scripts/verify-native-workspaces.mjs"
+    "test:native-workspaces": "node scripts/verify-native-workspaces.mjs",
+    "test:ebooks-dog": "node scripts/verify-ebook-dog.mjs",
+    "test:native-ebooks": "node scripts/verify-native-ebooks.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.11.1"
+    "@lingo-reader/mobi-parser": "0.4.6",
+    "@tauri-apps/api": "2.11.1",
+    "htmlparser2": "10.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

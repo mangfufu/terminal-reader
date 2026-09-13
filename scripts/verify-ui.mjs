@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openReadingFixture } from './reading-fixture.mjs';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -12,8 +13,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('http://127.0.0.1:1420');
   await page.screenshot({ path: fileURLToPath(new URL('terminal-welcome.png', output)) });
-  await page.getByRole('button', { name: '读一段示例' }).click();
-  await page.locator('h2').filter({ hasText: /^夜航$/ }).waitFor();
+  await openReadingFixture(page);
+  await page.locator('h2').filter({ hasText: /^阅读验证$/ }).waitFor();
   await page.screenshot({ path: fileURLToPath(new URL('reader-default.png', output)) });
   await page.keyboard.press('/');
   const command = page.getByRole('combobox', { name: '命令' });
@@ -77,7 +78,7 @@ try {
     assert.ok(dimensions.readerHeight >= 90, JSON.stringify({ theme, ...dimensions }));
     assert.ok(dimensions.inputWidth > 40 && dimensions.closeRight <= 280, JSON.stringify({ theme, ...dimensions }));
     await page.reload();
-    await page.locator('h2').filter({ hasText: /^夜航$/ }).waitFor();
+    await page.locator('h2').filter({ hasText: /^阅读验证$/ }).waitFor();
     assert.equal(await page.locator('#app').getAttribute('data-theme'), theme);
   }
   await page.setViewportSize({ width: 280, height: 160 });
@@ -91,8 +92,8 @@ try {
   await page.getByRole('slider', { name: '滚动速度' }).waitFor();
   await page.keyboard.press('Escape');
   await page.reload();
-  await page.locator('h2').filter({ hasText: /^夜航$/ }).waitFor();
+  await page.locator('h2').filter({ hasText: /^阅读验证$/ }).waitFor();
   assert.equal(await page.locator('#app').getAttribute('data-theme'), 'linux');
   assert.deepEqual(errors, []);
-  console.log('PASS: demo, command completion, keyboard focus, scrolling, four terminal profiles, 280x160 layout in all profiles, reload.');
+  console.log('PASS: reading fixture, command completion, keyboard focus, scrolling, four terminal profiles, 280x160 layout in all profiles, reload.');
 } finally { await browser.close(); }

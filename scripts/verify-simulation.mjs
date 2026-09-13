@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { openReadingFixture } from './reading-fixture.mjs';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
@@ -12,7 +13,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.clock.install();
   await page.goto('http://127.0.0.1:1420');
-  await page.getByRole('button', { name: '读一段示例' }).click();
+  await openReadingFixture(page);
   const command = async value => {
     await page.keyboard.press('/');
     const input = page.getByRole('combobox', { name: '命令' });

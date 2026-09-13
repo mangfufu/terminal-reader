@@ -2,7 +2,7 @@
 
 在熟悉的命令行外观里，安静地读一本书。
 
-Terminal Reader 是支持 **TXT、Markdown、EPUB** 的桌面阅读器，提供 PowerShell、经典 Windows PowerShell、CMD 和 Linux 终端外观。界面以纯文本操作为主，全程支持键盘，也保留鼠标。
+Terminal Reader 是支持 **TXT、Markdown、EPUB、MOBI、AZW/AZW3、PRC、FB2、HTML** 的桌面阅读器，提供 PowerShell、经典 Windows PowerShell、CMD 和 Linux 终端外观。界面以纯文本操作为主，全程支持键盘，也保留鼠标。
 
 [下载最新版](https://github.com/mangfufu/terminal-reader/releases/latest) · [快速上手](#快速上手) · [完整键盘操作](KEYBOARD.md)
 
@@ -22,13 +22,16 @@ Terminal Reader 是支持 **TXT、Markdown、EPUB** 的桌面阅读器，提供 
 
 | 阅读 | 书库与操作 |
 | --- | --- |
-| TXT、Markdown、EPUB 2/3 正文与目录 | 自定义分类、筛选、多选、批量移出与撤销 |
+| TXT、Markdown、EPUB 2/3、MOBI、AZW/AZW3、PRC、FB2、HTML 正文与目录 | 自定义分类、筛选、多选、批量移出与撤销 |
 | 章节导航、全文搜索、书签和跳转返回 | 应用内终端文件选择，不弹资源管理器 |
 | 自动滚动与速度预览 | 文件夹导入、源文件刷新、系统文件关联 |
 | 字符位置记忆，最近阅读与继续阅读 | 完整键盘操作，鼠标同样可用 |
 | 进度条、页数、百分比三种进度样式 | 命令补全、历史搜索和终端命令别名 |
 | 全书/章节进度、剩余页数估算、百分比跳转 | 当前书库备份、校验预览与合并恢复 |
 | 流畅阅读长篇文档 | 密码保护的独立书库与加密备份 |
+| Ctrl+↑/↓ 调整字号，保留阅读位置 | `dog` 召唤或收回像素小狗，菜单也可操作 |
+
+输入 `dog`，像素小狗会在阅读区域随机跑动，吃掉标点后蹲下留下便便。再次输入 `dog` 即可收回。动画只影响显示，书籍原文、复制、搜索和书签保持完整；滚动或切换书籍会清理痕迹，老板键会一起隐藏小狗。系统开启“减少动态效果”时，小狗静静陪读。
 
 ### 书库、分类与多选
 
@@ -62,18 +65,18 @@ Windows 支持安装包升级，便携版在线升级后会安装到当前用户
 
 | 平台 | 文件 | 使用方式 |
 | --- | --- | --- |
-| Windows x64 | `TerminalReader-0.6.1-win-x64-setup.exe` | 当前用户安装包 |
-| Windows x64 | `TerminalReader-0.6.1-win-x64.exe` | 直接运行 |
-| Ubuntu / Debian x64 | `TerminalReader-0.6.1-linux-x64.deb` | 安装并处理依赖 |
-| Linux x64 | `TerminalReader-0.6.1-linux-x64.AppImage` | 添加执行权限后运行 |
+| Windows x64 | `TerminalReader-0.7.0-win-x64-setup.exe` | 当前用户安装包 |
+| Windows x64 | `TerminalReader-0.7.0-win-x64.exe` | 直接运行 |
+| Ubuntu / Debian x64 | `TerminalReader-0.7.0-linux-x64.deb` | 安装并处理依赖 |
+| Linux x64 | `TerminalReader-0.7.0-linux-x64.AppImage` | 添加执行权限后运行 |
 
 Windows 需要 Microsoft WebView2 Runtime，安装程序可在缺失时安装。Linux 使用 GTK 3 / WebKitGTK 4.1，基于 Ubuntu 24.04 构建；裸可执行文件需要系统具备对应动态库。
 
 ```bash
-sudo apt install ./TerminalReader-0.6.1-linux-x64.deb
+sudo apt install ./TerminalReader-0.7.0-linux-x64.deb
 # 或使用 AppImage
-chmod +x TerminalReader-0.6.1-linux-x64.AppImage
-./TerminalReader-0.6.1-linux-x64.AppImage
+chmod +x TerminalReader-0.7.0-linux-x64.AppImage
+./TerminalReader-0.7.0-linux-x64.AppImage
 ```
 
 Release 附带文件校验值 `SHA256SUMS.txt` 和源码下载。
@@ -99,6 +102,7 @@ progress              查看全书和章节进度
 backup                备份当前书库
 backup --encrypt      为普通书库备份设置密码
 update                在线升级 / 手动下载
+dog                   召唤 / 收回像素小狗
 help                  快速上手
 ```
 
@@ -109,6 +113,7 @@ help                  快速上手
 | Ctrl+O / Ctrl+Shift+O | 导入文件 / 文件夹 |
 | Ctrl+B / Ctrl+F / Ctrl+J | 书库 / 搜索 / 章节 |
 | Ctrl+D | 书签 |
+| Ctrl+↑ / Ctrl+↓ | 放大 / 缩小字号（12–24），保留阅读位置 |
 | Ctrl+C | 未选择文字时关闭当前书并回主页 |
 | 空格 | 开始或暂停自动滚动 |
 | Alt+Q | 老板键，可自定义 |
@@ -118,7 +123,9 @@ help                  快速上手
 
 ## 支持边界
 
-- EPUB 提取正文与章节；图片、复杂排版、音视频、DRM、PDF、MOBI、AZW 和 OCR 不在当前支持范围。
+- EPUB 2/3、MOBI、AZW/AZW3、PRC、FB2 和 HTML/HTM 提取正文与章节，按终端纯文本排版。AZW 按文件内容识别旧版 MOBI 或 KF8；改扩展名不会转换其他格式。
+- 仅支持无 DRM 的电子书。图片、复杂排版、音视频、PDF、KFX、AZW4 和 OCR 暂不支持；HTML 不运行脚本或加载外部资源。
+- 文件、正文、导入总量及备份不设固定大小上限。电子书在独立线程解析，损坏或受 DRM 保护的文件会提示原因，并继续处理其他文件。
 - Markdown 支持基础标题、段落、引用和代码块。
 - 页数根据当前窗口估算，字号和窗口大小变化后会重新计算。
 
